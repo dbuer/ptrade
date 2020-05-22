@@ -8,5 +8,6 @@ setup(name="ptrade",
       packages=["ptrade"],
       python_requires=">=3.6",
       install_requires=[
-          "requests_oauthlib>=1.3"
+          "requests_oauthlib>=1.3",
+          "xmltodict>=0.12.0"
       ])
