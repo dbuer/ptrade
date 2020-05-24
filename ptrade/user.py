@@ -18,6 +18,17 @@ class Environment(enum.Enum):
     sandbox = "sandbox"
     production = "production"
 
+class Detail(enum.Enum):
+    def __str__(self):
+        return str(self.value)
+        
+    ALL = "ALL"
+    FUNDAMENTAL = "FUNDAMENTAL"
+    INTRADAY = "INTRADAY"
+    OPTIONS = "OPTIONS"
+    WEEK_52 = "WEEK_52"
+    MF_DETAIL = "MF_DETAIL"
+
 class UserNotAuthenticatedError(Exception):
     """ An error raised when the user tries to make priveleged requests
         without being fully authenticated. """
@@ -40,6 +51,7 @@ class User:
         self.renew_token_url = self.oauth_base_url + "renew_access_token"
         self.revoke_token_url = self.oauth_base_url + "revoke_access_token"
         self.list_accounts_url = self.api_base_url + "accounts/list"
+        self.quote_url = self.api_base_url + "market/quote/"
         
         if production:
             self.environment = Environment.production
@@ -47,6 +59,12 @@ class User:
             self.environment = Environment.sandbox
 
         log.info(f"Created {self.environment} user")
+    
+    def __enter__(self):
+        return self.login()
+    
+    def __exit__(self, ctx_type, ctx_value, ctx_traceback):
+        self.logout()
 
     @property
     def authenticated(self):
@@ -76,7 +94,9 @@ class User:
         verifier = input("\nEnter verification code: ")
 
         # Get access token
-        return self.oauth.fetch_access_token(self.access_token_url, verifier)
+        self.oauth.fetch_access_token(self.access_token_url, verifier)
+
+        return self
 
     def logout(self):
         """ Revokes the user access token. Call before terminating application. """
@@ -129,6 +149,21 @@ class User:
 
         if not self.authenticated:
             raise UserNotAuthenticatedError()
+    
+    def quote(self, symbols, detail):
+        """ Returns market quotes for each symbol at the specified level of detail.
+            If session is None, data will not be in real time. """
+        
+        numSymbols = len(symbols)
+        if numSymbols > 50:
+            raise ValueError("quote takes a maximum of 50 symbols.")
+
+        quote_url = self.quote_url + ','.join(symbols)
+        params = {"detailFlag": detail, "requireEarningsDate": True,
+            "overrideSymbolCount": numSymbols > 25, "skipMiniOptionsCheck": False}
+
+        response = self.oauth.get(quote_url, params=params)
+        return response.text
 
     def _parse_accounts(self, response):
         """ Parses a list of Account objects from the XML response text. """

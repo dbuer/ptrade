@@ -1,5 +1,6 @@
 from .user import (
     Environment,
+    Detail,
     User
 )
 
