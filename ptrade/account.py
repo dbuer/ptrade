@@ -1,3 +1,5 @@
+import xmltodict
+
 class Account(object):
     """ Account represents a single trading account owned by a user. """ 
 
@@ -15,42 +17,52 @@ class Account(object):
         self.accountUser = accountUser
         account_base_url = self.accountUser.api_base_url + \
             "accounts/{}/".format(self.accountIdKey)
-        self.get_balance_url = account_base_url + \
-            "balance?accountType={}&instType={}&realTimeNAV={}"
-        self.get_transaction_url = account_base_url + \
-            "transactions?marker={}&count={}"
-        self.get_portfolio_url = account_base_url + "portfolio"
+        self.balances_url = account_base_url + "balance"
+        self.transactions_url = account_base_url + "transactions"
+        self.trans_details_url = self.transactions_url + "/{}"
+        self.portfolio_url = account_base_url + "portfolio"
     
-    def get_balance(self, realTime=False):
-        """ Get the current account balance. 
-            TODO: Parse the response. """
+    def get_balances(self, realTime=False):
+        """ Get the current account balances. """
 
         self.accountUser.check_auth()
 
-        balance_url = self.get_balance_url.format(self.accountType, 
-            self.institutionType, realTime)
+        params = {"accountType": self.accountType, "instType": self.institutionType,
+            "realTimeNAV": realTime }
 
-        response = self.accountUser.oauth.get(balance_url)
-        return response.text
+        response = self.accountUser.oauth.get(self.balances_url, params=params)
+        response.raise_for_status()
+        return xmltodict.parse(response.text)
     
-    def get_transactions(self, start=0, count=50):
-        """ Get list of COUNT transactions starting at index START. 
-            TODO: Add more parameters and parse the response. """
+    def list_transactions(self, start=0, count=50, sortOrder='ASC'):
+        """ Get list of COUNT transactions starting at index START. """
 
         self.accountUser.check_auth()
 
-        transaction_url = self.get_transaction_url.format(start, count)
+        params = {"marker": start, "count": count, "sortOrder": sortOrder}
 
-        response = self.accountUser.oauth.get(transaction_url)
-        return response.text
+        response = self.accountUser.oauth.get(self.transactions_url, params)
+        response.raise_for_status()
+        return xmltodict.parse(response.text)
+
+    def get_transaction_details(self, tranid):
+        """ Get more details about the specified transaction. """
+
+        self.accountUser.check_auth()
+
+        get_transaction_url = self.trans_details_url.format(tranid)
+
+        response = self.accountUser.oauth.get(get_transaction_url)
+        response.raise_for_status()
+        return xmltodict.parse(response.text)
 
     def get_portfolio(self):
-        """ Get the current account's portfolio.
-            TODO: Add more parameters and parse the response. """
+        """ Get the current account's portfolio. """
         
         self.accountUser.check_auth()
 
-        response = self.accountUser.oauth.get(self.get_portfolio_url)
-        return response.text
+        response = self.accountUser.oauth.get(self.portfolio_url)
+        response.raise_for_status()
+        return xmltodict.parse(response.text)
 
 

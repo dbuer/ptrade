@@ -40,18 +40,22 @@ class UserNotAuthenticatedError(Exception):
 class User:
     """ User represents an Etrade user instance. """
 
-    def __init__(self, consumer_key, consumer_secret, production=False, login_url=ETRADE_LOGIN_URL):
+    def __init__(self, consumer_key, consumer_secret, production=False, 
+        oauth_base_url=OAUTH_BASE_URL, api_base_url=API_BASE_URL, login_url=ETRADE_LOGIN_URL):
+        
         self.consumer_key = consumer_key
         self.consumer_secret = consumer_secret
         self.login_url = login_url
-        self.oauth_base_url = OAUTH_BASE_URL.format("" if production else "sb")
-        self.api_base_url = API_BASE_URL.format("" if production else "sb")
+        self.oauth_base_url = oauth_base_url.format("" if production else "sb")
+        self.api_base_url = api_base_url.format("" if production else "sb")
         self.request_token_url = self.oauth_base_url + "request_token"
         self.access_token_url = self.oauth_base_url + "access_token"
         self.renew_token_url = self.oauth_base_url + "renew_access_token"
         self.revoke_token_url = self.oauth_base_url + "revoke_access_token"
         self.list_accounts_url = self.api_base_url + "accounts/list"
         self.quote_url = self.api_base_url + "market/quote/"
+        self.option_chains_url = self.api_base_url + "market/optionchains"
+        self.option_expires_url = self.api_base_url + "market/optionexpiredate"
         
         if production:
             self.environment = Environment.production
@@ -138,6 +142,42 @@ class User:
                 return account
         return None
     
+    def get_quote(self, symbols, detail, requireEarnings=True, skipMiniOptions=False):
+        """ Returns market quotes for each symbol at the specified level of detail. """
+        
+        self.check_auth()
+
+        numSymbols = len(symbols)
+        if numSymbols > 50:
+            raise ValueError("quote takes a maximum of 50 symbols.")
+
+        quote_url = self.quote_url + ','.join(symbols)
+        params = {"detailFlag": detail, "requireEarningsDate": requireEarnings,
+            "overrideSymbolCount": numSymbols > 25, "skipMiniOptionsCheck": skipMiniOptions}
+
+        response = self.oauth.get(quote_url, params=params)
+        response.raise_for_status()
+        return xmltodict.parse(response.text)
+
+    def get_option_chains(self, symbol, month, chainType="CALLPUT", **kwargs):
+        """ Get option chains for the given symbol. """
+
+        self.check_auth()
+        required = {"symbol": symbol, "expiryMonth": month, "chainType": chainType}
+        params = {**required, **kwargs}
+        response = self.oauth.get(self.option_chains_url, params=params)
+        response.raise_for_status()
+        return xmltodict.parse(response.text)
+    
+    def get_option_expires(self, symbol, expiryType="ALL"):
+        """ Get option expire dates for the given symbol. """
+        
+        self.check_auth()
+        params = {"symbol": symbol, "expiryType": expiryType}
+        response = self.oauth.get(self.option_expires_url, params=params)
+        response.raise_for_status()
+        return xmltodict.parse(response.text)
+
     def _get_request_token(self):
         """ Request tokens are valid for 5 minutes. """
 
@@ -149,21 +189,6 @@ class User:
 
         if not self.authenticated:
             raise UserNotAuthenticatedError()
-    
-    def quote(self, symbols, detail):
-        """ Returns market quotes for each symbol at the specified level of detail.
-            If session is None, data will not be in real time. """
-        
-        numSymbols = len(symbols)
-        if numSymbols > 50:
-            raise ValueError("quote takes a maximum of 50 symbols.")
-
-        quote_url = self.quote_url + ','.join(symbols)
-        params = {"detailFlag": detail, "requireEarningsDate": True,
-            "overrideSymbolCount": numSymbols > 25, "skipMiniOptionsCheck": False}
-
-        response = self.oauth.get(quote_url, params=params)
-        return response.text
 
     def _parse_accounts(self, response):
         """ Parses a list of Account objects from the XML response text. """
